@@ -9,7 +9,7 @@ Place the script file `Submit-BCAppSourceApp.ps1` into your project folder or a 
 Basic pattern:
 ```powershell
 $authcontext = Get-BCAuthContext -tenantID $TenantId -authType 'S2S' -clientId $clientId -clientSecret $clientSecret
-$selectedOffer = Get-AppSourceOffers -authcontext $authcontext -offerName 'File Handler Helper Core'
+$selectedOffer = Get-AppSourceOffers -authcontext $authcontext -offerName $offerName
 
 $AppSourceArchives = Initialize-AppSourceArchives -ArtifactsPath $zipFilePath -OfferName $selectedOffer.name -mainApp $appFile -libraryApps 'all'
 
