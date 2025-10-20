@@ -3,7 +3,9 @@ function Initialize-AppSourceArchives {
         [Parameter(Mandatory = $true)]
         [string]$OfferName,
         [Parameter(Mandatory = $true)]
-        [string]$ArtifactsPath
+        [string]$ArtifactsPath,
+        [string]$mainApp,
+        [string]$libraryApps
     )
 
     Write-Host "
@@ -31,7 +33,12 @@ function Initialize-AppSourceArchives {
 
     # Select the main file for the offer
     while ($true) {
-        $mainInput = Read-Host "Select main app file by typing its exact file name (or type 'cancel' to abort)"
+        if (!$mainApp) {
+            $mainInput = Read-Host "Select main app file by typing its exact file name (or type 'cancel' to abort)"
+        }
+        else {
+            $mainInput = $mainApp
+        }
         if ($mainInput -eq 'cancel') {
             throw "Aborted by user."
         }
@@ -59,66 +66,103 @@ function Initialize-AppSourceArchives {
     $libraryCandidates = $files | Where-Object { $_.FullName -ne $mainFile.FullName }
     if ($libraryCandidates) {
         $selectedLibraryFiles = @()
-        while ($true) {
-            if (-not $libraryCandidates) {
-                Write-Host "No more library candidates available."
-                break
-            }
 
-            Write-Host "Available library candidates (type one exact file name at a time, or 'all' to select all remaining):"
-            $libraryCandidates | Sort-Object Name | ForEach-Object { Write-Host "- $($_.Name)" }
+        # If libraryApps parameter provided, parse and select from it (comma-separated allowed).
+        if ($libraryApps) {
+            # Normalize to an array of names
+            $namesToSelect = if ($libraryApps -is [System.Array]) { $libraryApps } else { $libraryApps -split ',' }
+            foreach ($raw in $namesToSelect) {
+                $name = $raw.ToString().Trim()
+                if ([string]::IsNullOrWhiteSpace($name)) { continue }
 
-            $libInput = Read-Host "Select a single library app file by typing its exact file name, or type 'all' to include all remaining, 'none' to finish, or 'cancel' to abort"
-            if ($null -eq $libInput) {
-                Write-Host "No input provided. Try again."
-                continue
-            }
+                $lower = $name.ToLowerInvariant()
+                if ($lower -eq 'none') {
+                    break
+                }
+                if ($lower -eq 'all') {
+                    $selectedLibraryFiles += $libraryCandidates
+                    $libraryCandidates = @()
+                    break
+                }
 
-            $inputTrimmed = $libInput.Trim()
-            $inputLower = $inputTrimmed.ToLowerInvariant()
+                $matchesSelectedApps = $libraryCandidates | Where-Object { $_.Name -eq $name }
+                if ($matchesSelectedApps.Count -gt 1) {
+                    throw "Multiple files share that name: $name"
+                }
+                if ($matchesSelectedApps.Count -eq 0) {
+                    throw "No library app found with name: $name"
+                }
 
-            if ($inputLower -eq 'cancel') {
-                Write-Host "Aborted by user."
-                Remove-Item -LiteralPath $TmpPath -Recurse -Force -ErrorAction SilentlyContinue
-                return
-            }
-            if ($inputLower -eq 'none') {
-                break
-            }
-            if ($inputLower -eq 'all') {
-                # Add all remaining candidates
-                $selectedLibraryFiles += $libraryCandidates
-                Write-Host ("Selected all remaining library files (" + ($libraryCandidates.Count) + ").")
-                # clear candidates to indicate nothing left
-                $libraryCandidates = @()
-                break
-            }
-
-            if ([string]::IsNullOrWhiteSpace($inputTrimmed)) {
-                Write-Host "No input provided. Try again."
-                continue
-            }
-
-            $name = $inputTrimmed
-            $matchesSelectedApps = $libraryCandidates | Where-Object { $_.Name -eq $name }
-            if ($matchesSelectedApps.Count -gt 1) {
-                throw "Multiple files share that name."
-            }
-            if ($matchesSelectedApps.Count -eq 0) {
-                Write-Host "No file found with that exact name among remaining candidates. Try again."
-                continue
-            }
-            else {
                 $selected = $matchesSelectedApps[0]
                 $selectedLibraryFiles += $selected
                 # remove selected from candidates to avoid duplicate selection
                 $libraryCandidates = $libraryCandidates | Where-Object { $_.FullName -ne $selected.FullName }
                 Write-Host ("Selected: " + $selected.Name)
-                Write-Host "You may select another file, or type 'none' to finish."
-                continue
             }
         }
-        
+        else {
+            # Interactive selection (same behavior as before)
+            while ($true) {
+                if (-not $libraryCandidates) {
+                    Write-Host "No more library candidates available."
+                    break
+                }
+
+                Write-Host "Available library candidates (type one exact file name at a time, or 'all' to select all remaining):"
+                $libraryCandidates | Sort-Object Name | ForEach-Object { Write-Host "- $($_.Name)" }
+
+                $libInput = Read-Host "Select a single library app file by typing its exact file name, or type 'all' to include all remaining, 'none' to finish, or 'cancel' to abort"
+                if ($null -eq $libInput) {
+                    Write-Host "No input provided. Try again."
+                    continue
+                }
+
+                $inputTrimmed = $libInput.Trim()
+                $inputLower = $inputTrimmed.ToLowerInvariant()
+
+                if ($inputLower -eq 'cancel') {
+                    Write-Host "Aborted by user."
+                    Remove-Item -LiteralPath $TmpPath -Recurse -Force -ErrorAction SilentlyContinue
+                    return
+                }
+                if ($inputLower -eq 'none') {
+                    break
+                }
+                if ($inputLower -eq 'all') {
+                    # Add all remaining candidates
+                    $selectedLibraryFiles += $libraryCandidates
+                    Write-Host ("Selected all remaining library files (" + ($libraryCandidates.Count) + ").")
+                    # clear candidates to indicate nothing left
+                    $libraryCandidates = @()
+                    break
+                }
+
+                if ([string]::IsNullOrWhiteSpace($inputTrimmed)) {
+                    Write-Host "No input provided. Try again."
+                    continue
+                }
+
+                $name = $inputTrimmed
+                $matchesSelectedApps = $libraryCandidates | Where-Object { $_.Name -eq $name }
+                if ($matchesSelectedApps.Count -gt 1) {
+                    throw "Multiple files share that name."
+                }
+                if ($matchesSelectedApps.Count -eq 0) {
+                    Write-Host "No file found with that exact name among remaining candidates. Try again."
+                    continue
+                }
+                else {
+                    $selected = $matchesSelectedApps[0]
+                    $selectedLibraryFiles += $selected
+                    # remove selected from candidates to avoid duplicate selection
+                    $libraryCandidates = $libraryCandidates | Where-Object { $_.FullName -ne $selected.FullName }
+                    Write-Host ("Selected: " + $selected.Name)
+                    Write-Host "You may select another file, or type 'none' to finish."
+                    continue
+                }
+            }
+        }
+
         if ($selectedLibraryFiles.Count -gt 0) {
             $libraryAppsPath = Join-Path -Path $TmpPath -ChildPath ("{0}.libraries.zip" -f $OfferName)
             Compress-Archive -LiteralPath ($selectedLibraryFiles | ForEach-Object { $_.FullName }) -DestinationPath $libraryAppsPath -Force
